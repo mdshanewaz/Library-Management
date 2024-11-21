@@ -131,3 +131,24 @@ class BorrowedBooksDetailView(APIView):
         ]
 
         return Response(f'{books}', status=200)
+
+class AvailableBookToBorrowView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+
+        books = BookModel.objects.filter(amount__gte=2)
+
+        available = [
+            {
+                "book_name": book.name,
+                "writer": book.writer,
+                "quantity": book.amount,
+            }
+            for book in books
+        ]
+
+        if not available:
+            return Response({"No books are available!"}, status=404)
+
+        return Response(f'{available}', status=200)
