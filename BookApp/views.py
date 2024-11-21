@@ -1,4 +1,5 @@
 from django.utils.timezone import now
+from datetime import timedelta
 from rest_framework import viewsets, permissions
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -35,7 +36,7 @@ class BorrowBookView(APIView):
     def post(self, request, book_id):
         try:
             book = BookModel.objects.get(id=book_id)
-            borrow_book = BorrowModel.objects.filter(user=request.user, book=book_id)
+            borrow_book = BorrowModel.objects.filter(user=request.user, book=book_id, return_date__isnull=True)
         except BookModel.DoesNotExist:
             return Response({"error": "Book not found."}, status=404)
         
@@ -91,7 +92,7 @@ class FineOverviewView(APIView):
         borrows = BorrowModel.objects.filter(user=request.user, return_date__isnull=True)
         fines = [
             {
-                "book_title": borrow.book.title,
+                "book_name": borrow.book.name,
                 "borrow_date": borrow.borrow_date.strftime("%Y-%m-%d"),
                 "return_deadline": (borrow.borrow_date + timedelta(days=14)).strftime("%Y-%m-%d"),
                 "fine": borrow.fine,
@@ -108,3 +109,25 @@ class FineOverviewView(APIView):
                 "fines": fines,
                 "Total Fines" : total_fine
                 }, status=200)
+
+class BorrowedBooksDetailView(APIView):
+    persmission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        
+        book_borrowed = BorrowModel.objects.filter(user=request.user, return_date__isnull=True)
+        
+        if not book_borrowed:
+            return Response({"You have not borrowed any book!"}, status=404)
+        
+        books = [
+            {
+                "book_name": borrow.book.name,
+                "borrow_date": borrow.borrow_date.strftime("%Y-%m-%d"),
+                "return_deadline": (borrow.borrow_date + timedelta(days=14)).strftime("%Y-%m-%d"),
+                "fine": borrow.fine,
+            }
+            for borrow in book_borrowed
+        ]
+
+        return Response(f'{books}', status=200)
