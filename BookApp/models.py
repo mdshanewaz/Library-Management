@@ -1,4 +1,6 @@
 from django.db import models
+from datetime import timedelta
+from django.utils.timezone import now
 from django.contrib.auth.models import User
 from AuthApp.models import CustomUser
 
@@ -35,3 +37,17 @@ class BorrowModel(models.Model):
 
     def __str__(self):
         return f"{self.user.email} borrowed {self.book.name}"
+    
+    @property
+    def is_overdue(self):
+        return not self.return_date and now() > self.borrow_date + timedelta(days=14)
+
+    @property
+    def fine(self):
+        if self.return_date and self.return_date > self.borrow_date + timedelta(days=14):
+            overdue_days = (self.return_date - (self.borrow_date + timedelta(days=14))).days
+            return overdue_days * 5  # Fine rate: 5 BDT/day
+        elif self.is_overdue:
+            overdue_days = (now() - (self.borrow_date + timedelta(days=14))).days
+            return overdue_days * 5
+        return 0

@@ -35,22 +35,29 @@ class BorrowBookView(APIView):
     def post(self, request, book_id):
         try:
             book = BookModel.objects.get(id=book_id)
+            borrow_book = BorrowModel.objects.filter(user=request.user, book=book_id)
         except BookModel.DoesNotExist:
             return Response({"error": "Book not found."}, status=404)
         
         if book.amount <= 0:
             return Response({"error": "Book is not available for borrowing."}, status=400)
+        
+        if borrow_book:
+            return Response({"error" : "You have already borrowed this book."}, status=404)
     
         borrowed_books_count = BorrowModel.objects.filter(user=request.user,  return_date__isnull=True).count()
 
-        if borrowed_books_count >= 5:
+        if borrowed_books_count == 5:
             return Response({"error": "You have reached the borrow limit of 5 books."}, status=400)
 
         BorrowModel.objects.create(user=request.user, book=book)
         book.amount -= 1
         book.save()
 
-        return Response({"message": f"You have successfully borrowed '{book.name}'."}, status=200)
+        return Response({
+            "message": f"You have successfully borrowed '{book.name}'.",
+            "return_deadline": (now() + timedelta(days=14)).strftime("%Y-%m-%d"),             
+            }, status=200)
 
 class ReturnBookView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -69,4 +76,35 @@ class ReturnBookView(APIView):
         book.amount += 1
         book.save()
 
-        return Response({"message": f"You have successfully returned '{book.name}'."}, status=200)
+        fine = borrow_record.fine
+
+        return Response({
+            "message": f"You have successfully returned '{book.name}'.",
+            "fine": f"Your fine is {fine}"
+            }, status=200)
+
+
+class FineOverviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        borrows = BorrowModel.objects.filter(user=request.user, return_date__isnull=True)
+        fines = [
+            {
+                "book_title": borrow.book.title,
+                "borrow_date": borrow.borrow_date.strftime("%Y-%m-%d"),
+                "return_deadline": (borrow.borrow_date + timedelta(days=14)).strftime("%Y-%m-%d"),
+                "fine": borrow.fine,
+            }
+            for borrow in borrows
+        ]
+
+        total_fine = sum(fine["fine"] for fine in fines)
+
+        if not total_fine:
+            return Response({"message": "You have no fines."}, status=200)
+        else:
+            return Response({
+                "fines": fines,
+                "Total Fines" : total_fine
+                }, status=200)
